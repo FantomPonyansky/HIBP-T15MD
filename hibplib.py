@@ -13,7 +13,7 @@ from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 from itertools import cycle
 import numba
-
+import optimizers
 
 # %% define class for trajectories
 
@@ -234,11 +234,20 @@ class Traj():
             # find last point of the secondary trajectory
             if (RV_new[0, 0] > 2.5) and (RV_new[0, 1] < 1.5):
                 # intersection with the stop plane:
+                
+                #!!! original code    
                 r_intersect = line_plane_intersect(stop_plane_n, r_aim,
-                                                   RV_new[0, :3]-RV_old[0, :3],
-                                                   RV_new[0, :3])
+                                                    RV_new[0, :3]-RV_old[0, :3],
+                                                    RV_new[0, :3])
+                
+                # r_intersect = plane_segment_intersect(stop_plane_n, r_aim,
+                #                                       RV_old[0, :3], RV_new[0, :3])
                 # check if r_intersect is between RV_old and RV_new:
+                
+                #!!! original code
                 if is_between(RV_old[0, :3], RV_new[0, :3], r_intersect):
+                
+                # if not np.isnan(r_intersect):
                     RV_new[0, :3] = r_intersect
                     RV = np.vstack((RV, RV_new))
                     # check XY plane:
@@ -251,7 +260,8 @@ class Traj():
                         # print('aim Z!')
                         self.IsAimZ = True
                     break
-
+                
+                
             # continue trajectory calculation:
             RV_old = RV_new
             t = t + dt
@@ -259,6 +269,9 @@ class Traj():
             tag_column = np.hstack((tag_column, 20))
             # print('t secondary = ', t)
 
+        else:
+            self.print_log("max time exceeded during passing secondary")
+            
         self.RV_sec = RV
         self.tag_sec = tag_column
 
@@ -1129,7 +1142,7 @@ def optimize_A3B3(tr, geom, UA3, UB3, dUA3, dUB3,
             while not tr.IsAimZ:
                 print('pushing Z direction')
                 tr.U['A3'], tr.U['B3'] = UA3, UB3
-                tr.pass_sec(RV0, rs, E, B, geom,  # stop_plane_n=stop_plane_n,
+                tr.pass_sec(RV0, rs, E, B, geom, #stop_plane_n=stop_plane_n,     #!!! originally no stop plane was given
                             tmax=tmax, eps_xy=eps_xy, eps_z=eps_z)
                 # tr.IsAimZ = True  # if you want to skip UB3 calculation
                 dz = rs[2] - tr.RV_sec[-1, 2]
@@ -1531,6 +1544,26 @@ def is_between(A, B, C, eps=1e-6):
         return False
     return True
 
+@numba.njit()
+def plane_segment_intersect(planeNormal, planePoint, segmPoint0, segmPoint1, eps=1e-6): #!!! to be tested
+    '''
+    function returns intersection segment between plane and ray
+    '''
+    segmVector = segmPoint1 - segmPoint0
+    planeC = - planeNormal.dot(planePoint)
+    
+    up = planeNormal.dot(segmPoint0) + planeC
+    dn = planeNormal.dot(segmVector)
+    if abs(dn) < eps: 
+        return None
+
+    t = up/dn
+    intersectLinePlane = segmVector*t + segmPoint0
+    
+    if 0.0 <= t <= 1.0: 
+        return intersectLinePlane
+    else: 
+        return None
 
 @numba.njit()
 def order(A, B, C):
@@ -2307,3 +2340,64 @@ def return_B_new(r, Bin):
     '''
 
     return Bin(r)
+
+#%% new sec beamline optimization
+
+def optimize(tr, optimizer, E, B, geom, RV0, tmax, eps_xy, eps_z):
+    while True:
+        # print('\n passing secondary trajectory')
+        tr.pass_sec(RV0, optimizer.r_target, E, B, geom, tmax=tmax, 
+                    eps_xy=eps_xy, eps_z=eps_z, stop_plane_n=optimizer.stop_plane_n)
+        if not optimizer.change_voltages(tr): 
+            return optimizer.voltages_list
+        # print('\n changing voltages')
+
+def optimize_sec(E, B, geom, traj_list, optimization_mode="center", 
+                 target='slit', max_voltages=[40., 40., 40.], eps_xy=1e-3, 
+                 eps_z=1e-3, tmax=9e-5, U0 = [0., 0., 0.], dU = [7., 10., 2.]):
+    
+    #create list for results
+    traj_list_passed = []
+    
+    #create 3 optimizers
+    opt_A3 = optimizers.A3(optimization_mode, dU[0], max_voltages[0], target, geom)
+    opt_B3 = optimizers.B3(optimization_mode, dU[1], max_voltages[1], target, geom)
+    opt_A4 = optimizers.A4('pass',            dU[2], max_voltages[2], target, geom)
+    
+    for tr in traj_list:
+        
+        print('\nEb = {}, UA2 = {}'.format(tr.Ebeam, tr.U['A2']))
+        print('Target: ' + target)
+        
+        #set start point and voltages
+        RV0 = np.array([tr.RV_sec[0]])
+        tr.U['A3'], tr.U['B3'], tr.U['A4'] = U0
+        
+        #reset voltages lists
+        A3_voltages, B3_voltages, A4_voltages = [], [], []
+        opt_A3.voltages_list, opt_B3.voltages_list, opt_A4.voltages_list = [], [], []
+        opt_A3.count, opt_B3.count, opt_A4.count = 0, 0, 0
+        
+        #optimize plates one by one
+        A3_voltages = optimize(tr, opt_A3, E, B, geom, RV0, tmax, eps_xy, eps_z)
+        if A3_voltages:
+            print("\nOptimizing B3")
+            #pass A3 voltages to B3 optimizer
+            opt_B3.A3_voltages = A3_voltages
+            B3_voltages = optimize(tr, opt_B3, E, B, geom, RV0, tmax, eps_xy, eps_z)
+            print("B3 voltages: ", B3_voltages)
+        if B3_voltages:
+            print("\nOptimizing A4")
+            #pass A3 and B3 voltages to A4 optimizer
+            opt_A4.A3_voltages = A3_voltages
+            opt_A4.B3_voltages = B3_voltages
+            A4_voltages = optimize(tr, opt_A4, E, B, geom, RV0, tmax, eps_xy, eps_z)
+        
+        #finish optimization and write down results
+        if (not A4_voltages) or (True in tr.IntersectGeometrySec.values()):
+            print("\nOptimization failed, trajectory NOT saved\n")
+        else: 
+            print("\nTrajectory optimized and saved\n")
+            traj_list_passed.append(tr)
+            
+    return traj_list_passed
