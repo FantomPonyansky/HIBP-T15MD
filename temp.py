@@ -157,6 +157,95 @@ def ___No_break___():
 
         # check eliptical radius of particle:  # 1.5 m - major radius of a torus, elon - size along Y
         mask = np.sqrt((self.RV_prim[:, 0] - geom.R)**2 + (self.RV_prim[:, 1] / geom.elon)**2) <= geom.r_plasma   
+        
+        
+#%%
+if not load_traj_from_file:
+    # define list of trajectories that hit r_aim
+    traj_list_B2 = []
+    # initial beam energy range
+    Ebeam_range = np.arange(Emin, Emax + dEbeam, dEbeam)  # [keV]
+    
+    for Ebeam in Ebeam_range:
+        shift, geomT15.r_dict['aim_zshift'], dUB2, t1, shot, input_fname, exp_voltages, indexes = ...
+        target, UA2_range, UB2_range, UA3_range, UB3_range, optimizeA3B3, eps_xy, eps_z = ...
+    
+        # UA2 loop
+        for i in range(UA2_range.shape[0]):
+            UA2 = UA2_range[i]
+            if not optimizeB2: UB2 = UB2_range[i]
+            if not optimizeA3B3: UA3, UB3 = UA3_range[i], UB3_range[i]
+                
+            #reset aim point
+            shift = np.zeros(3)
+            geomT15.r_dict['aim_zshift'] = geomT15.r_dict['aim']
+            
+            # dict of starting voltages
+            U_dict = {'A2': UA2, 'B2': UB2,'A3': UA3, 'B3': UB3, 'A4': UA4, 'an': Ebeam/(2*G)}
+            tr = hb.Traj(q, m_ion, Ebeam, r0, geomT15.angles_dict['r0'][0], geomT15.angles_dict['r0'][1], U_dict, dt)
+            
+            # **************************** optimize B2 voltage. here the trajectories calculated !!!
+            tr = hb.optimize_B2(tr, geomT15, UB2, dUB2, E, B, dt, stop_plane_n, target, optimizeB2, eps_xy=eps_xy, eps_z=eps_z)
+            if tr is None: continue #if True in tr.IntersectGeometry.values()  if True in tr.IntersectGeometrySec.values(): continue # print('NOT saved, primary intersected geometry')
+           # **************************** 
+            
+ 
+            # if no intersections, upldate UB2 values
+            UB2 = tr.U['B2']
+
+            #calc shift
+            shift = calc_shift(tr.RV_sec[-1, 3:6], geomT15.plates_dict['A3'], adaptive_aim)
+            if is_zero(shift):  # np.all( np.isclose(shift, np.zeros(3)) ): 
+                traj_list_B2.append(tr)
+            else:
+                geomT15.r_dict['aim_zshift'] = geomT15.r_dict['aim'] + shift
+                tr_shifted = hb.optimize_B2(tr, geomT15, UB2, dUB2, E, B, dt, stop_plane_n, target, optimizeB2, eps_xy=eps_xy, eps_z=eps_z)
+                traj_list_B2.append(     best(shifted_tr, tr, ...)     )
+
+            else:
+                print('NOT saved, sth is wrong')
+    
+    t2 = time.time()
+    print({True: '\n B2 voltage optimized, t = {:.1f} s\n'.format(t2-t1), False: '\n Trajectories to r_aim calculated, t = {:.1f} s\n'.format(t2-t1)}[optimizeB2])
+
+#%%  pure experiment
+if not load_traj_from_file:
+    # define list of trajectories that hit r_aim
+    traj_list_B2 = []
+    # initial beam energy range
+    Ebeam_range = np.arange(Emin, Emax + dEbeam, dEbeam)  # [keV]
+    
+    for Ebeam in Ebeam_range:
+        shift, geomT15.r_dict['aim_zshift'], dUB2, t1, shot, input_fname, exp_voltages, indexes = ...
+        target, UA2_range, UB2_range, UA3_range, UB3_range, optimizeA3B3, eps_xy, eps_z = ...
+    
+        # UA2 loop
+        for i in range(UA2_range.shape[0]):
+            UA2 = UA2_range[i]
+            UB2 = UB2_range[i]
+            UA3, UB3 = UA3_range[i], UB3_range[i]
+                
+            #reset aim point
+            shift = np.zeros(3)
+            geomT15.r_dict['aim_zshift'] = geomT15.r_dict['aim']
+            
+            # dict of starting voltages
+            U_dict = {'A2': UA2, 'B2': UB2,'A3': UA3, 'B3': UB3, 'A4': UA4, 'an': Ebeam/(2*G)}
+            tr = hb.Traj(q, m_ion, Ebeam, r0, geomT15.angles_dict['r0'][0], geomT15.angles_dict['r0'][1], U_dict, dt)
+            
+            # **************************** optimize B2 voltage. here the trajectories calculated !!!
+            tr = hb.optimize_B2(tr, geomT15, UB2, dUB2, E, B, dt, stop_plane_n, target, False, eps_xy=eps_xy, eps_z=eps_z)
+            if tr is None: continue #if True in tr.IntersectGeometry.values()  if True in tr.IntersectGeometrySec.values(): continue # print('NOT saved, primary intersected geometry')
+            # **************************** 
+            traj_list_B2.append(tr)
+    
+    t2 = time.time()
+    print({True: '\n B2 voltage optimized, t = {:.1f} s\n'.format(t2-t1), False: '\n Trajectories to r_aim calculated, t = {:.1f} s\n'.format(t2-t1)}[optimizeB2])
+
+
+#%%
+
+        
         self.tag_prim[mask] = 11
 
         # list of initial points of secondary trajectories:
@@ -167,7 +256,7 @@ def ___No_break___():
             # ********************************************************* #
             self.pass_sec(RV02, r_aim, E_interp, B_interp, geom, stop_plane_n=stop_plane_n, eps_xy=eps_xy, eps_z=eps_z, invisible_wall_x=invisible_wall_x)
             # ********************************************************* #
-            if not (     (no_intersect and True in self.IntersectGeometrySec.values()) or (no_out_of_bounds and self.B_out_of_bounds)    ):
+            if sec_traj_is_ok(self, no_intersect, no_out_of_bounds): # not (     (no_intersect and True in self.IntersectGeometrySec.values()) or (no_out_of_bounds and self.B_out_of_bounds)    ):
                 list_sec.append(self.RV_sec)
 
 
@@ -337,3 +426,94 @@ pass_fan         calls    pass_prim
 pass_to_target   calls    pass_sec
 optimize_B2      calls    pass_fan   pass_to_target
 '''
+#%%
+
+def delta(r_target, r, coords): 
+    if coords == 'xy':
+        return np.linalg.norm(r_target[:2]-r[:2]) * np.sign(np.cross(r[:2], r_target[:2]))
+    elif coords == 'z': 
+        r_target[2] - r[2]
+    else: 
+        raise Exception("delta: invalid coord")
+
+def optimize(tr, optimizator): 
+    while True: 
+        tr.pass_sec(RV0, r_target, E, B, geom, tmax=tmax, eps_xy=eps_xy, eps_z=eps_z)
+        if not optimizator.change_voltages(tr): 
+            return optimizator.voltage_list 
+
+class OptimizerA3: 
+    def __init__(self, r_target): 
+        self.plates = 'A3'
+        self.voltages_list = []
+        self.r_target = r_target
+        self.count = 0
+        
+    def change_voltages(self, tr): 
+        last_r = tr.RV_sec[-1, 0:3]
+        drXY = delta(r_target, last_r, 'xy') 
+
+        if  abs(drXY) < 0.01: 
+            self.voltage_list.append(tr.U['A3'])
+            return True
+        if count > 10000: 
+            return True
+
+        tr.U['A3'] = tr.U['A3']  + dUA3*drXY
+        count += 1
+        return False
+
+        
+
+def optimize_A3B3(tr, geom, UA3, UB3, dUA3, dUB3,
+                  E, B, dt, target='slit', UA3_max=50., UB3_max=50.,
+                  eps_xy=1e-3, eps_z=1e-3):
+    '''
+    get voltages on A3 and B3 plates to get into target
+    '''
+    
+    #set target
+    r_target = geom.r_dict[target]
+    stop_plane_n = geom.plates_dict['an'].slit_plane_n
+    
+    #reset variables
+    tr.dt1, tr.dt2 = dt, dt
+    tmax = 9e-5
+    tr.IsAimXY, tr.IsAimZ = False, False  # ; vltg_fail = False
+    n_stepsA3 = 0
+    
+    RV0 = np.array([tr.RV_sec[0]])  #starting point
+
+    while not (tr.IsAimXY and tr.IsAimZ):
+        #set voltages
+        tr.U['A3'], tr.U['B3'] = UA3, UB3
+        #passing traj
+        tr.pass_sec(RV0, r_target, E, B, geom, tmax=tmax, eps_xy=eps_xy, eps_z=eps_z)
+
+        #calculate discrepancy from target
+        drXY = delta(r_target, tr.RV_sec[-1], 'xy') 
+        #set new voltage
+        UA3 = UA3 + dUA3*drXY; n_stepsA3 += 1
+        
+        #check A3 if nan, too big or too many steps
+
+        if abs(drXY) < 0.01:
+            if tr.IntersectGeometrySec['A3']:
+                return tr, True # vltg_fail = True
+
+            n_stepsZ = 0
+            while not tr.IsAimZ:
+
+                tr.U['A3'], tr.U['B3'] = UA3, UB3
+                tr.pass_sec(RV0, r_target, E, B, geom, tmax=tmax, eps_xy=eps_xy, eps_z=eps_z)
+                dz = r_target[2] - tr.RV_sec[-1, 2]
+                UB3 = UB3 - dUB3*dz; n_stepsZ += 1
+                if ( abs(UB3) > UB3_max ) or (n_stepsZ > 100):
+                    return tr, True # vltg_fail = True
+
+            n_stepsA3 = 0
+            dz =  delta(r_target, tr.RV_sec[-1], 'z') 
+
+
+    return tr, False # vltg_fail = False
+

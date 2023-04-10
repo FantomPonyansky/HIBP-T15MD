@@ -1,6 +1,7 @@
 '''
 Heavy Ion Beam Probe graphic library
 '''
+#%% imports
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -26,6 +27,7 @@ except ModuleNotFoundError:
     print('module alphashape NOT FOUND')
     pass
 
+import hibpcalc.fields as fields
 
 # %% Magnetic field plots
 def plot_3d(B, wires, volume_corner1, volume_corner2,
@@ -475,7 +477,7 @@ def plot_geometry(ax, TF_coil_filename='TFCoil.dat',
                     color='b')  # 'tab:orange')
 
     if PFCoils_data_filename is not None:
-        pf_coils = hb.import_PFcoils(PFCoils_data_filename)
+        pf_coils = fields.import_PFcoils(PFCoils_data_filename)
 
         # plot pf coils
         for coil in pf_coils.keys():

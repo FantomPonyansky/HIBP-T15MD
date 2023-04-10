@@ -5,6 +5,9 @@ import numpy as np
 import time
 import hibplib as hb
 import hibpplotlib as hbplot
+import hibpcalc.fields as fields
+import hibpcalc.geomfunc as gf
+import hibpcalc.misc as misc
 
 
 # %%
@@ -47,7 +50,7 @@ def pde_solve_full(U, Uupper_plate, Ulower_plate, upper_plate_flag,
 # %%
 if __name__ == '__main__':
 
-    plts_name = 'A2'
+    plts_name = 'B3'
     save_data = False
 
     # define voltages [Volts]
@@ -97,7 +100,7 @@ if __name__ == '__main__':
         length = 0.4  # along X [m]
         width = 0.15  # along Z [m]
         thick = 0.005  # [m]
-        gap = 0.1  # distance between plates along Y [m]
+        gap = 0.2  # distance between plates along Y [m]
         gamma = -90.
 
     elif plts_name == 'A4':
@@ -149,20 +152,30 @@ if __name__ == '__main__':
     # Create mesh grid
     # lengths of the edges of the domain [m]
     r = np.array([length, gap, width])
-    r = hb.rotate(r, axis=(0, 0, 1), deg=alpha_sw)
-    r = hb.rotate(r, axis=(1, 0, 0), deg=gamma)
+    r = gf.rotate(r, axis=(0, 0, 1), deg=alpha_sw)
+    r = gf.rotate(r, axis=(1, 0, 0), deg=gamma)
     r = abs(r)
     border_x = round(2*r[0], 2)
+    # border_y = round(4*r[1], 2) if plts_name == 'an' else round(2*r[1], 2)
     if plts_name == 'an':
         border_y = round(4*r[1], 2)
     else:
         border_y = round(2*r[1], 2)
     border_z = round(2*r[2], 2)
     delta = thick/2  # space step
+    #__N = round(border_x /delta)
+    #__range_x = np.linspace(-border_x/2., border_x/2. , __N) + plts_center[0] 
+    
+    # <reonid> np.arange -> _sym_np_arange
+    #range_x = misc._sym_np_arange(-border_x/2., border_x/2., delta) + plts_center[0]
+    #range_y = misc._sym_np_arange(-border_y/2., border_y/2., delta) + plts_center[1]
+    #range_z = misc._sym_np_arange(-border_z/2., border_z/2., delta) + plts_center[2]
 
     range_x = np.arange(-border_x/2., border_x/2., delta) + plts_center[0]
     range_y = np.arange(-border_y/2., border_y/2., delta) + plts_center[1]
     range_z = np.arange(-border_z/2., border_z/2., delta) + plts_center[2]
+
+
     x, y, z = np.meshgrid(range_x, range_y,
                           range_z, indexing='ij')  # [X ,Y, Z]
     # collect xmin, xmax, ymin, ymax, zmin, zmax, delta
@@ -191,7 +204,7 @@ if __name__ == '__main__':
     print('Sweep angle: ', alpha_sw)
 
     UP, LP, upper_plate_flag, lower_plate_flag = \
-        hb.plate_flags(range_x, range_y, range_z, U,
+        fields.plate_flags(range_x, range_y, range_z, U,
                        plts_geom, plts_angles, plts_center)
 
 # %% solver
@@ -211,11 +224,11 @@ if __name__ == '__main__':
     Ex[lower_plate_flag], Ey[lower_plate_flag], Ez[lower_plate_flag] = 0, 0, 0
     index = int(UP.shape[0]/2)
     if save_data and beamline == 'prim':
-        hb.save_E(beamline, plts_name, Ex, Ey, Ez,
+        fields.save_E(beamline, plts_name, Ex, Ey, Ez,
                   plts_angles, plts_geom, domain, an_params,
                   UP[index:], LP[index:])
     elif save_data and beamline == 'sec':
-        hb.save_E(beamline, plts_name, Ex, Ey, Ez,
+        fields.save_E(beamline, plts_name, Ex, Ey, Ez,
                   plts_angles, plts_geom, domain, an_params,
                   UP[index:], LP[index:])
     else:

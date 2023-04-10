@@ -3,10 +3,11 @@ Define main parameters of T-15MD HIBP geometry
 '''
 import numpy as np
 import hibplib as hb
-
+import hibpcalc.fields as fields
+from hibpcalc.misc import SecBeamlineData
 
 # %%
-def define_geometry(analyzer=1):
+def define_geometry(analyzer=1, beamline_num=0):
     '''
 
     Parameters
@@ -57,26 +58,39 @@ def define_geometry(analyzer=1):
     # coordinates of the initial point of the trajectory [m]
     geom.add_coords('r0', 'B2', dist_r0, geom.angles_dict['r0'])
 
+#%% beamlines
+        #                            xaim   yaim    zaim    alpha  beta   gamma
+    beamlines_1an = [SecBeamlineData(2.5,  -0.2,    0.0,    15.0,  15.0, -20.0), # 0
+                     SecBeamlineData(2.5,  -0.2,    0.0,    20.0,  15.0, -20.0), # 1
+                     SecBeamlineData(2.6,  -0.2,    0.0,    20.0,  15.0, -20.0), # 2
+                     SecBeamlineData(2.7,  -0.2,    0.0,    20.0,  15.0, -20.0), # 3
+                     SecBeamlineData(2.5,   0.0,    0.0,    15.0,  15.0, -20.0), # 4
+                     SecBeamlineData(2.5,   0.0,    0.0,    20.0,  15.0, -20.0)  # 5
+                     ]
+    
+    beamline1 = beamlines_1an[beamline_num]
+    
+    #                           xaim  yaim   zaim    alpha beta  gamma 
+    # beamline1 = SecBeamlineData(2.5,  -0.2,   0.0,    15.0, 15.0, -20.0)
+    beamline2 = SecBeamlineData(2.6,  0.0, zport_in, 30.0, 20.0, -20.0)
+    
+    # !!!
+    # beamline1 = SecBeamlineData(2.5,  0.0,   0.0,    20.0, 15.0, -20.0)
+    # beamline_debug = SecBeamlineData(2.5,  0.0, 0.0, 15.0, 15.0, -20.0)
+    # beamline1 = beamline_debug
+    
+#%%    
     # AIM position (BEFORE the Secondary beamline) [m]
     if analyzer == 1:
-        xaim = 2.5  # 2.6
-        yaim = 0.0 #-0.1  # -0.15  # -0.25
-        zaim = 0.0 #zport_in  # 0.0
-        # alpha and beta angles of the SECONDARY beamline [deg]
-        alpha_sec = 30. #10.
-        beta_sec = 15. #15. #12.
-        gamma_sec = -20.  # 0
+        beamline = beamline1
+        xaim, yaim, zaim, alpha_sec, beta_sec, gamma_sec = beamline
         A3_angles = np.array([alpha_sec, beta_sec, gamma_sec])
     elif analyzer == 2:
-        xaim = 2.6  # 2.5
-        yaim = 0.0  # 0.15
-        zaim = zport_in  # 0.0
-        # alpha and beta angles of the SECONDARY beamline [deg]
-        alpha_sec = 30  # 35.  # 5.
-        beta_sec = 20.  # 25.
-        gamma_sec = -20.  # 0
+        beamline = beamline2
+        xaim, yaim, zaim, alpha_sec, beta_sec, gamma_sec = beamline
         # in the second line U_lower_plate=0
         A3_angles = np.array([alpha_sec, beta_sec, gamma_sec+180.])
+ 
     r_aim = np.array([xaim, yaim, zaim])
     geom.r_dict['aim'] = r_aim
     geom.r_dict['aim_zshift'] = r_aim  # + np.array([0., 0., 0.03])
@@ -120,15 +134,13 @@ def define_geometry(analyzer=1):
 
     # TOKAMAK GEOMETRY
     # chamber entrance and exit coordinates
-    geom.chamb_ent = [(1.87, 1.152), (1.675, 1.434),
-                      (2.358, 0.445), (1.995, 0.970)]
-    geom.chamb_ext = [(2.39, -0.44), (2.39, -2.0),
-                      (2.39, 0.44), (2.39, 0.8)]
+    geom.chamb_ent = [(1.87, 1.152), (1.675, 1.434), (2.358, 0.445), (1.995, 0.970)]
+    geom.chamb_ext = [(2.39, -0.44), (2.39, -2.0), (2.39, 0.44), (2.39, 0.8)]
 
     # Toroidal Field coil
     geom.coil = np.loadtxt('TFCoil.dat') / 1000  # [m]
     # Poloidal Field coils
-    geom.pf_coils = hb.import_PFcoils('PFCoils.dat')
+    geom.pf_coils = fields.import_PFcoils('PFCoils.dat')
     # Camera contour
     geom.camera = np.loadtxt('T15_vessel.txt') / 1000
     # Separatrix contour
